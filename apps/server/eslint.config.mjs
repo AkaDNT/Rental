@@ -1,34 +1,80 @@
-// @ts-check
-import eslint from '@eslint/js';
-import eslintPluginPrettierRecommended from 'eslint-plugin-prettier/recommended';
-import globals from 'globals';
-import tseslint from 'typescript-eslint';
+module.exports = {
+  root: true,
+  parser: '@typescript-eslint/parser',
+  parserOptions: {
+    project: ['tsconfig.json'],
+    tsconfigRootDir: __dirname,
+    sourceType: 'module',
+  },
+  env: {
+    node: true,
+    jest: true,
+    es2021: true,
+  },
+  plugins: ['@typescript-eslint', 'prettier', 'import', 'unused-imports'],
+  extends: [
+    'plugin:@typescript-eslint/recommended',
+    'plugin:@typescript-eslint/recommended-requiring-type-checking',
+    'plugin:prettier/recommended',
+  ],
+  rules: {
+    /* NestJS & TypeScript */
+    '@typescript-eslint/explicit-function-return-type': 'off',
+    '@typescript-eslint/explicit-member-accessibility': 'off',
+    '@typescript-eslint/no-empty-function': [
+      'error',
+      {
+        allow: ['constructors'],
+      },
+    ],
 
-export default tseslint.config(
-  {
-    ignores: ['eslint.config.mjs'],
-  },
-  eslint.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
-  eslintPluginPrettierRecommended,
-  {
-    languageOptions: {
-      globals: {
-        ...globals.node,
-        ...globals.jest,
+    /* Import ordering & cleanup */
+    'import/order': [
+      'error',
+      {
+        groups: ['builtin', 'external', 'internal', 'parent', 'sibling', 'index'],
+        'newlines-between': 'always',
+        alphabetize: {
+          order: 'asc',
+          caseInsensitive: true,
+        },
       },
-      sourceType: 'commonjs',
-      parserOptions: {
-        projectService: true,
-        tsconfigRootDir: import.meta.dirname,
+    ],
+    'unused-imports/no-unused-imports': 'error',
+    '@typescript-eslint/no-unused-vars': [
+      'warn',
+      {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+      },
+    ],
+
+    /* Prettier */
+    'prettier/prettier': [
+      'error',
+      {
+        endOfLine: 'auto',
+      },
+    ],
+  },
+  overrides: [
+    {
+      files: ['*.spec.ts', '*.test.ts'],
+      env: {
+        jest: true,
+      },
+      plugins: ['jest'],
+      extends: ['plugin:jest/recommended'],
+      rules: {
+        '@typescript-eslint/no-explicit-any': 'off',
       },
     },
-  },
-  {
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn'
+    {
+      files: ['*.d.ts'],
+      rules: {
+        '@typescript-eslint/ban-types': 'off',
+      },
     },
-  },
-);
+  ],
+  ignorePatterns: ['dist', 'node_modules', 'coverage', '*.js'],
+};
