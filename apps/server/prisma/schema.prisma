@@ -1,18 +1,22 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
+// prisma/schema.prisma
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
   extensions = [postgis]
+}
+
+/* ===================== Enums ===================== */
+enum Role {
+  SUPERADMIN
+  ADMIN
+  MANAGER
+  TENANT
+  SUPPORT
 }
 
 enum Highlight {
@@ -71,6 +75,180 @@ enum PaymentStatus {
   Overdue
 }
 
+/* ===================== Auth & Security ===================== */
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  emailVerified   Boolean  @default(false)
+  name            String?
+  phoneNumber     String?
+  pictureUrl      String?
+  passwordHash    String?              // local-only
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastLoginAt     DateTime?
+
+  // Quan hệ auth
+  roles           UserRole[]
+  refreshTokens   RefreshToken[]
+  webauthnCreds   WebAuthnCredential[]
+  apiKeys         ApiKey[]
+  loginActivities LoginActivity[]
+  attempts        LoginAttempt[]
+
+  // Back-relations 1-1 tới hồ sơ domain (không giữ khoá ngoại ở đây)
+  tenant          Tenant?
+  manager         Manager?
+
+
+  emailVerificationTokens   EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
+}
+
+model UserRole {
+  userId String
+  role   Role
+  orgId  String? // nếu đa tổ chức
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, role])
+}
+
+model RefreshToken {
+  id         String   @id @default(cuid())
+  userId     String
+  hashed     String   // hash của RT
+  jti        String   @unique
+  deviceId   String?
+  ip         String?
+  userAgent  String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model EmailVerificationToken {
+  id         String   @id @default(cuid())
+  userId     String
+  hashed     String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id         String   @id @default(cuid())
+  userId     String
+  hashed     String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model WebAuthnCredential {
+  id         String   @id              // credentialId (base64url)
+  userId     String
+  publicKey  String
+  counter    Int      @default(0)
+  transports String[]
+  aaguid     String?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ApiKey {
+  id         String   @id @default(cuid())
+  userId     String?
+  name       String
+  hashedKey  String
+  scopes     String[]
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model LoginActivity {
+  id         String   @id @default(cuid())
+  userId     String
+  at         DateTime @default(now())
+  ip         String?
+  userAgent  String?
+  success    Boolean  @default(true)
+  note       String?
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model LoginAttempt {
+  id         String   @id @default(cuid())
+  userId     String?
+  email      String?
+  at         DateTime @default(now())
+  ip         String?
+  success    Boolean  @default(false)
+  reason     String?
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, at])
+}
+
+/* ===================== Domain (Business) ===================== */
+// Hồ sơ 1-1 gắn với User, không dùng Cognito
+model Manager {
+  id          Int     @id @default(autoincrement())
+  userId      String  @unique
+  name        String
+  email       String
+  phoneNumber String
+
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  managedProperties Property[]
+}
+
+model Tenant {
+  id          Int     @id @default(autoincrement())
+  userId      String  @unique
+  name        String
+  email       String
+  phoneNumber String
+
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  properties   Property[]  @relation("TenantProperties")
+  favorites    Property[]  @relation("TenantFavorites")
+  applications Application[]
+  leases       Lease[]
+}
+
+model Location {
+  id          Int    @id @default(autoincrement())
+  address     String
+  city        String
+  state       String
+  country     String
+  postalCode  String
+  coordinates Unsupported("geography(Point, 4326)")
+
+  properties  Property[]
+}
+
 model Property {
   id                Int          @id @default(autoincrement())
   name              String
@@ -88,52 +266,20 @@ model Property {
   squareFeet        Int
   propertyType      PropertyType
   postedDate        DateTime     @default(now())
-  averageRating     Float?       @default(0)
-  numberOfReviews   Int?         @default(0)
+  averageRating     Float        @default(0)
+  numberOfReviews   Int          @default(0)
+
   locationId        Int
-  managerCognitoId  String
+  managerId         Int          // thay cho managerCognitoId
 
   location     Location      @relation(fields: [locationId], references: [id])
-  manager      Manager       @relation(fields: [managerCognitoId], references: [cognitoId])
+  manager      Manager       @relation(fields: [managerId], references: [id])
   leases       Lease[]
   applications Application[]
   favoritedBy  Tenant[]      @relation("TenantFavorites")
   tenants      Tenant[]      @relation("TenantProperties")
-}
 
-model Manager {
-  id          Int    @id @default(autoincrement())
-  cognitoId   String @unique
-  name        String
-  email       String
-  phoneNumber String
-
-  managedProperties Property[]
-}
-
-model Tenant {
-  id          Int    @id @default(autoincrement())
-  cognitoId   String @unique
-  name        String
-  email       String
-  phoneNumber String
-
-  properties   Property[]    @relation("TenantProperties")
-  favorites    Property[]    @relation("TenantFavorites")
-  applications Application[]
-  leases       Lease[]
-}
-
-model Location {
-  id          Int                                   @id @default(autoincrement())
-  address     String
-  city        String
-  state       String
-  country     String
-  postalCode  String
-  coordinates Unsupported("geography(Point, 4326)")
-
-  properties Property[]
+  @@index([locationId, postedDate])
 }
 
 model Application {
@@ -141,7 +287,7 @@ model Application {
   applicationDate DateTime
   status          ApplicationStatus
   propertyId      Int
-  tenantCognitoId String
+  tenantId        Int               // thay cho tenantCognitoId
   name            String
   email           String
   phoneNumber     String
@@ -149,23 +295,27 @@ model Application {
   leaseId         Int?              @unique
 
   property Property @relation(fields: [propertyId], references: [id])
-  tenant   Tenant   @relation(fields: [tenantCognitoId], references: [cognitoId])
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
   lease    Lease?   @relation(fields: [leaseId], references: [id])
+
+  @@index([tenantId, propertyId, status])
 }
 
 model Lease {
-  id              Int      @id @default(autoincrement())
-  startDate       DateTime
-  endDate         DateTime
-  rent            Float
-  deposit         Float
-  propertyId      Int
-  tenantCognitoId String
+  id         Int      @id @default(autoincrement())
+  startDate  DateTime
+  endDate    DateTime
+  rent       Float
+  deposit    Float
+  propertyId Int
+  tenantId   Int      // thay cho tenantCognitoId
 
   property    Property     @relation(fields: [propertyId], references: [id])
-  tenant      Tenant       @relation(fields: [tenantCognitoId], references: [cognitoId])
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
   application Application?
   payments    Payment[]
+
+  @@index([tenantId, propertyId, startDate])
 }
 
 model Payment {
@@ -177,5 +327,7 @@ model Payment {
   paymentStatus PaymentStatus
   leaseId       Int
 
-  lease Lease @relation(fields: [leaseId], references: [id])
+  lease         Lease @relation(fields: [leaseId], references: [id])
+
+  @@index([leaseId, dueDate])
 }

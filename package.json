@@ -7,6 +7,10 @@
     "build": "turbo run build",
     "lint": "turbo run lint"
   },
+  "packageManager": "npm@10.9.0",
+  "workspaces": [
+    "apps/*"
+  ],
   "keywords": [],
   "author": "",
   "license": "ISC",
