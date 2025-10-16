@@ -30,12 +30,16 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { email } });
   }
 
+  findByUserName(user_name: string) {
+    return this.prisma.user.findUnique({ where: { user_name } });
+  }
+
   findById(id: string) {
     return this.prisma.user.findUnique({ where: { id }, include: { roles: true } });
   }
 
-  async createLocal(email: string, password: string, name?: string) {
-    const passwordHash = await argon2.hash(password);
-    return this.prisma.user.create({ data: { email, passwordHash, name } });
+  async createLocal(email: string, password: string, user_name: string) {
+    const password_hash = await argon2.hash(password);
+    return this.prisma.user.create({ data: { email, password_hash, user_name } });
   }
 }

@@ -11,22 +11,22 @@ export class AuthController {
 
   @Post('register')
   register(@Body() dto: RegisterDto) {
-    return this.auth.register(dto.email, dto.password, dto.name);
+    return this.auth.registerWithRole(dto.email, dto.user_name, dto.password, dto.role);
   }
 
   @Post('login')
   login(@Body() dto: LoginDto) {
-    return this.auth.login(dto.email, dto.password);
+    return this.auth.login(dto.user_name, dto.password);
   }
 
   @Post('refresh')
   refresh(@Body() dto: RefreshDto) {
-    return this.auth.refresh(dto.refreshToken);
+    return this.auth.refresh(dto.refresh_token);
   }
 
   @Post('logout')
   logout(@Body() dto: RefreshDto) {
-    return this.auth.logout(dto.refreshToken);
+    return this.auth.logout(dto.refresh_token);
   }
 
   @UseGuards(JwtAuthGuard)
